@@ -1,0 +1,40 @@
+rules_version = '2';
+
+// SquareRate strict per-user security rules.
+// A user can only read, create, update, or delete documents whose `userId`
+// field matches their authenticated UID. The `users/{uid}` profile document
+// is keyed by the UID itself.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User profile documents. Doc ID must equal the authenticated user's UID.
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.uid == userId;
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Job documents. Owner is identified by the `userId` field.
+    match /jobs/{jobId} {
+      allow read:   if request.auth != null
+                    && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null
+                    && resource.data.userId == request.auth.uid;
+    }
+
+    // Deny by default. Every other path is locked down.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
