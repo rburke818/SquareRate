@@ -227,10 +227,16 @@ export default function JobWorkspacePage() {
         </div>
       </header>
 
-      {/* Map canvas */}
-      <section className="flex-1 bg-bone">
-        <div className="mx-auto flex h-full w-full max-w-6xl flex-col px-6 py-6">
-          <div className="relative flex flex-1 overflow-hidden border border-line bg-[#d9d9d7]">
+      {/* Map canvas. The flex chain `main → section → inner div → map
+          wrapper` propagates available height down to the canvas. We then
+          floor the canvas wrapper at `min-h-[520px]` as a defense in depth:
+          even if any link in the flex chain collapses (Tailwind v4 reset
+          quirks, a transparent provider, an unrelated reflow), the GoogleMap
+          still has real pixels to render into. The wrapper is the
+          positioning ancestor for MapCanvas's `absolute inset-0` fill. */}
+      <section className="flex flex-1 flex-col bg-bone">
+        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-6 min-h-0">
+          <div className="relative flex-1 overflow-hidden border border-line bg-[#d9d9d7] min-h-[520px]">
             <MapCanvas
               center={center}
               initialPath={job.polygonCoords}

@@ -7,7 +7,7 @@ import {
   Polygon,
   useJsApiLoader,
 } from "@react-google-maps/api";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   GOOGLE_MAPS_API_KEY,
@@ -39,7 +39,22 @@ interface MapCanvasProps {
   zoom?: number;
 }
 
-const MAP_CONTAINER_STYLE = { width: "100%", height: "100%" } as const;
+/**
+ * Earlier the GoogleMap div used `width:100%; height:100%`, which depended on
+ * every ancestor in the flex chain resolving to a real height. If any link in
+ * that chain collapses (Tailwind v4 reset quirks, a non-flex provider div, a
+ * browser still computing layout when Maps initializes) the map mounts at 0×0
+ * and Google silently renders nothing — no console error, no network errors,
+ * just a blank canvas. Absolute positioning removes that dependency: as long
+ * as the *positioning ancestor* (the wrapper marked `relative` in the job
+ * page) has pixels, the map fills it edge-to-edge.
+ */
+const MAP_CONTAINER_STYLE: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  width: "100%",
+  height: "100%",
+};
 
 const POLYGON_STYLE: google.maps.PolygonOptions = {
   fillColor: "#131313",
@@ -114,6 +129,29 @@ export function MapCanvas({
 
   const polygonRef = useRef<google.maps.Polygon | null>(null);
   const listenersRef = useRef<google.maps.MapsEventListener[]>([]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+
+  /**
+   * One-shot diagnostic. The Cursor terminal pipes the dev browser console
+   * back through Next, so this `console.info` lands in `terminals/1.txt`.
+   * If `width` or `height` is 0 we now have proof that the container is
+   * collapsing and the layout (not CSP, not the API key) is the culprit.
+   */
+  useEffect(() => {
+    if (!isLoaded) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    console.info(
+      "[MapCanvas] container size:",
+      Math.round(rect.width),
+      "x",
+      Math.round(rect.height),
+      "center:",
+      stableCenter,
+    );
+  }, [isLoaded, stableCenter]);
 
   const emitFromPolygon = useCallback(() => {
     const polygon = polygonRef.current;
@@ -157,9 +195,40 @@ export function MapCanvas({
     [onChange],
   );
 
+  /**
+   * The GoogleMap can mount at the precise instant the parent flex layout
+   * hasn't finished reflowing — Maps then caches a 0×0 viewport and never
+   * issues tile requests for the real size. Forcing a `resize` event on the
+   * next animation frame after `idle` makes Maps re-measure and request the
+   * correct tiles. Cheap, idempotent, and survives window resizes too.
+   */
+  const handleMapLoad = useCallback((map: google.maps.Map) => {
+    mapInstanceRef.current = map;
+    const fire = () => {
+      const m = mapInstanceRef.current;
+      if (!m) return;
+      google.maps.event.trigger(m, "resize");
+      m.setCenter(m.getCenter() ?? { lat: 0, lng: 0 });
+    };
+    requestAnimationFrame(fire);
+    setTimeout(fire, 250);
+  }, []);
+
+  const handleMapUnmount = useCallback(() => {
+    mapInstanceRef.current = null;
+  }, []);
+
+  // The outer wrapper is `absolute inset-0` so we always cover the parent.
+  // Parent must be `position: relative` (the wrapper in the job page already
+  // is) and must have non-zero height — guaranteed via `min-h-[480px]` there.
+  const wrapperClass = "absolute inset-0";
+
   if (loadError) {
     return (
-      <div className="flex h-full w-full items-center justify-center border border-line bg-mist">
+      <div
+        ref={containerRef}
+        className={`${wrapperClass} flex items-center justify-center bg-mist`}
+      >
         <p className="text-[11px] uppercase tracking-[0.22em] text-muted">
           Map failed to load
         </p>
@@ -169,7 +238,10 @@ export function MapCanvas({
 
   if (!isLoaded) {
     return (
-      <div className="flex h-full w-full items-center justify-center border border-line bg-mist">
+      <div
+        ref={containerRef}
+        className={`${wrapperClass} flex items-center justify-center bg-mist`}
+      >
         <p className="text-[11px] uppercase tracking-[0.22em] text-muted">
           Loading canvas…
         </p>
@@ -178,40 +250,44 @@ export function MapCanvas({
   }
 
   return (
-    <GoogleMap
-      mapContainerStyle={MAP_CONTAINER_STYLE}
-      center={stableCenter}
-      zoom={zoom}
-      options={mapOptions}
-    >
-      {hasPolygon ? (
-        <Polygon
-          path={seedPath}
-          editable
-          draggable
-          options={POLYGON_STYLE}
-          onLoad={handlePolygonLoad}
-          onUnmount={handlePolygonUnmount}
-          onMouseUp={emitFromPolygon}
-          onDragEnd={emitFromPolygon}
-        />
-      ) : (
-        <>
-          <Marker position={stableCenter} />
-          <DrawingManager
-            onPolygonComplete={handlePolygonComplete}
-            options={{
-              drawingControl: false,
-              drawingMode: google.maps.drawing.OverlayType.POLYGON,
-              polygonOptions: {
-                ...POLYGON_STYLE,
-                editable: true,
-                draggable: true,
-              },
-            }}
+    <div ref={containerRef} className={wrapperClass}>
+      <GoogleMap
+        mapContainerStyle={MAP_CONTAINER_STYLE}
+        center={stableCenter}
+        zoom={zoom}
+        options={mapOptions}
+        onLoad={handleMapLoad}
+        onUnmount={handleMapUnmount}
+      >
+        {hasPolygon ? (
+          <Polygon
+            path={seedPath}
+            editable
+            draggable
+            options={POLYGON_STYLE}
+            onLoad={handlePolygonLoad}
+            onUnmount={handlePolygonUnmount}
+            onMouseUp={emitFromPolygon}
+            onDragEnd={emitFromPolygon}
           />
-        </>
-      )}
-    </GoogleMap>
+        ) : (
+          <>
+            <Marker position={stableCenter} />
+            <DrawingManager
+              onPolygonComplete={handlePolygonComplete}
+              options={{
+                drawingControl: false,
+                drawingMode: google.maps.drawing.OverlayType.POLYGON,
+                polygonOptions: {
+                  ...POLYGON_STYLE,
+                  editable: true,
+                  draggable: true,
+                },
+              }}
+            />
+          </>
+        )}
+      </GoogleMap>
+    </div>
   );
 }

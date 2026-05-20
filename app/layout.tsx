@@ -37,6 +37,21 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/*
+          DOM-level CSP override. Turbopack ignores the `headers()` config in
+          dev mode, so we ship the policy in the document `<head>` where the
+          browser is forced to honor it on every load. Permissive on purpose:
+          `'unsafe-eval'` is mandatory for the Google Maps JS API, and the
+          wildcard `script-src *` lets gstatic sub-libraries (drawing,
+          geometry, places) load without an explicit allow-list. Tighten
+          this once Phase 3 ships and we know every host SquareRate touches.
+        */}
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' https://*.googleapis.com https://*.gstatic.com; connect-src * 'unsafe-inline' https://*.googleapis.com; img-src * data: blob: 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com;"
+        />
+      </head>
       <body className="min-h-full bg-paper text-charcoal flex flex-col">
         <AuthProvider>{children}</AuthProvider>
       </body>

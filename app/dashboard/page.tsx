@@ -96,6 +96,12 @@ export default function DashboardPage() {
     if (coords) setCoords(null);
   }
 
+  function handleAddressClear() {
+    setAddress("");
+    setCoords(null);
+    setFormError(null);
+  }
+
   async function initializeJob(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) return;
@@ -205,6 +211,7 @@ export default function DashboardPage() {
                 value={address}
                 onValueChange={handleAddressTyped}
                 onSelect={handlePlaceSelect}
+                onClear={handleAddressClear}
                 placeholder="123 Main Street, Springfield"
               />
               {coords ? (
