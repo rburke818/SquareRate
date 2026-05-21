@@ -22,7 +22,19 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
-import { SURFACE_TYPES, type JobDoc, type SurfaceType } from "@/lib/types";
+import {
+  SURFACE_TYPES,
+  normalizePolygonCoords,
+  type JobDoc,
+  type SurfaceType,
+} from "@/lib/types";
+
+/**
+ * The intake form requires an explicit surface choice before submission;
+ * we model the "no selection yet" state with an empty string so the native
+ * `<select>` can render the "Choose surface…" placeholder.
+ */
+type SurfaceSelection = SurfaceType | "";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,7 +44,7 @@ export default function DashboardPage() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
     null,
   );
-  const [surfaceType, setSurfaceType] = useState<SurfaceType>("Hardscape");
+  const [surfaceType, setSurfaceType] = useState<SurfaceSelection>("");
   const [jobs, setJobs] = useState<JobDoc[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -58,11 +70,13 @@ export default function DashboardPage() {
             jobId: d.id,
             userId: data.userId,
             address: data.address ?? "",
-            surfaceType: (data.surfaceType ?? "Hardscape") as SurfaceType,
+            // Preserve whatever the doc carries — known surface types render
+            // normally in the table; legacy/empty values show "—".
+            surfaceType: (data.surfaceType ?? "") as SurfaceType,
             status: data.status ?? "pending",
             lat: typeof data.lat === "number" ? data.lat : 0,
             lng: typeof data.lng === "number" ? data.lng : 0,
-            polygonCoords: data.polygonCoords ?? [],
+            polygonCoords: normalizePolygonCoords(data.polygonCoords),
             calculatedArea: data.calculatedArea ?? 0,
             calculatedPerimeter: data.calculatedPerimeter ?? 0,
             createdAt: data.createdAt ?? null,
@@ -79,7 +93,7 @@ export default function DashboardPage() {
   function resetIntake() {
     setAddress("");
     setCoords(null);
-    setSurfaceType("Hardscape");
+    setSurfaceType("");
     setFormError(null);
   }
 
@@ -114,6 +128,10 @@ export default function DashboardPage() {
       setFormError(
         "Pick the address from the dropdown so we can resolve its coordinates.",
       );
+      return;
+    }
+    if (!surfaceType) {
+      setFormError("Choose a surface type before initializing a job.");
       return;
     }
     setFormError(null);
@@ -227,9 +245,18 @@ export default function DashboardPage() {
               </span>
               <select
                 value={surfaceType}
-                onChange={(e) => setSurfaceType(e.target.value as SurfaceType)}
-                className="w-full appearance-none border border-line bg-paper px-3 py-3 text-sm text-charcoal focus:border-charcoal"
+                onChange={(e) =>
+                  setSurfaceType(e.target.value as SurfaceSelection)
+                }
+                className={`w-full appearance-none border bg-paper px-3 py-3 text-sm focus:border-charcoal ${
+                  surfaceType
+                    ? "border-line text-charcoal"
+                    : "border-charcoal text-graphite"
+                }`}
               >
+                <option value="" disabled>
+                  Choose surface…
+                </option>
                 {SURFACE_TYPES.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -241,8 +268,13 @@ export default function DashboardPage() {
             <div className="flex items-end">
               <button
                 type="submit"
-                disabled={creating}
-                className="w-full bg-charcoal px-6 py-3 text-[11px] uppercase tracking-[0.18em] text-paper transition-colors hover:bg-graphite disabled:opacity-50 sm:w-auto"
+                disabled={creating || !surfaceType}
+                title={
+                  !surfaceType
+                    ? "Choose a surface type to unlock"
+                    : undefined
+                }
+                className="w-full bg-charcoal px-6 py-3 text-[11px] uppercase tracking-[0.18em] text-paper transition-colors hover:bg-graphite disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
               >
                 {creating ? "Creating…" : "Initialize job"}
               </button>
@@ -334,7 +366,7 @@ function JobsTable({ jobs, loading, onOpen, onDelete }: JobsTableProps) {
                 {job.address || <span className="text-muted">—</span>}
               </td>
               <td className="px-4 py-4 align-middle text-graphite">
-                {job.surfaceType}
+                {job.surfaceType || <span className="text-muted">—</span>}
               </td>
               <td className="px-4 py-4 align-middle text-graphite">
                 {job.calculatedArea > 0
