@@ -23,3 +23,14 @@ export const GOOGLE_MAPS_LIBRARIES: Libraries = [
  * a single `<script>` tag is injected regardless of which route mounts first.
  */
 export const GOOGLE_MAPS_LOADER_ID = "squarerate-google-maps-loader";
+
+/**
+ * Hard-pinned Maps JS API version (`v=` query param on the loader script).
+ *
+ * Maps JS `3.65` removed the `DrawingManager` functionality we rely on for the
+ * job-canvas polygon tool, so the rolling `weekly` channel crashes on mount.
+ * Pinning to `3.64` keeps `drawing` available until we migrate off it. Keep
+ * this value in sync across every `useJsApiLoader` call — they share
+ * `GOOGLE_MAPS_LOADER_ID`, so mismatched options would conflict.
+ */
+export const GOOGLE_MAPS_API_VERSION = "3.64";

@@ -19,6 +19,7 @@ import {
 
 import {
   GOOGLE_MAPS_API_KEY,
+  GOOGLE_MAPS_API_VERSION,
   GOOGLE_MAPS_LIBRARIES,
   GOOGLE_MAPS_LOADER_ID,
 } from "@/lib/maps";
@@ -182,6 +183,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const { isLoaded, loadError } = useJsApiLoader({
       id: GOOGLE_MAPS_LOADER_ID,
       googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+      version: GOOGLE_MAPS_API_VERSION,
       libraries: GOOGLE_MAPS_LIBRARIES,
     });
 
