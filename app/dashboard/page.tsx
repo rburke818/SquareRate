@@ -21,13 +21,18 @@ import {
 } from "@/components/AddressAutocomplete";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/lib/auth-context";
+import { exportJobsToCSV, type Units } from "@/lib/csvExport";
 import { db } from "@/lib/firebase";
 import {
   SURFACE_TYPES,
   normalizePolygonCoords,
+  normalizeRoofStats,
   type JobDoc,
   type SurfaceType,
 } from "@/lib/types";
+
+/** Exact factor used across the app (sq m → sq ft). */
+const SQFT_PER_SQM = 10.7639104;
 
 /**
  * The intake form requires an explicit surface choice before submission;
@@ -49,6 +54,9 @@ export default function DashboardPage() {
   const [jobsLoading, setJobsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Drives both the Area column and the CSV export units. Defaults to imperial
+  // to match the workspace dock.
+  const [units, setUnits] = useState<Units>("imperial");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/auth");
@@ -79,6 +87,7 @@ export default function DashboardPage() {
             polygonCoords: normalizePolygonCoords(data.polygonCoords),
             calculatedArea: data.calculatedArea ?? 0,
             calculatedPerimeter: data.calculatedPerimeter ?? 0,
+            roofStats: normalizeRoofStats(data.roofStats),
             createdAt: data.createdAt ?? null,
           };
         });
@@ -159,6 +168,20 @@ export default function DashboardPage() {
       setCreating(false);
     }
   }
+
+  /** Filter to finalized jobs and hand them to the client-side CSV exporter.
+   *  Honors the units toggle; the util builds + downloads in-browser with no
+   *  extra Firestore reads. */
+  function handleExportCompleted() {
+    const completed = jobs.filter((j) => j.status === "complete");
+    if (completed.length === 0) return;
+    exportJobsToCSV(completed, { units });
+  }
+
+  const completedJobsCount = useMemo(
+    () => jobs.filter((j) => j.status === "complete").length,
+    [jobs],
+  );
 
   async function deleteJob(jobId: string) {
     if (!user) return;
@@ -291,7 +314,7 @@ export default function DashboardPage() {
 
       <section className="flex-1">
         <div className="mx-auto w-full max-w-6xl px-6 py-12">
-          <div className="mb-6 flex items-baseline justify-between">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
               <h2 className="text-xs uppercase tracking-[0.22em] text-muted">
                 Historical feed
@@ -300,11 +323,28 @@ export default function DashboardPage() {
                 {jobs.length} {jobs.length === 1 ? "job" : "jobs"} on record
               </p>
             </div>
+            <div className="flex items-center gap-3">
+              <UnitsToggle value={units} onChange={setUnits} />
+              <button
+                type="button"
+                onClick={handleExportCompleted}
+                disabled={completedJobsCount === 0}
+                title={
+                  completedJobsCount === 0
+                    ? "No finalized jobs to export yet"
+                    : undefined
+                }
+                className="inline-flex items-center gap-2 border border-line bg-paper px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-charcoal transition-colors hover:border-charcoal hover:bg-charcoal hover:text-paper disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-paper disabled:hover:text-charcoal"
+              >
+                Export completed ({completedJobsCount})
+              </button>
+            </div>
           </div>
 
           <JobsTable
             jobs={jobs}
             loading={jobsLoading}
+            units={units}
             onOpen={(id) => router.push(`/job/${id}`)}
             onDelete={(id) => deleteJob(id)}
           />
@@ -317,11 +357,12 @@ export default function DashboardPage() {
 interface JobsTableProps {
   jobs: JobDoc[];
   loading: boolean;
+  units: Units;
   onOpen: (jobId: string) => void;
   onDelete: (jobId: string) => void;
 }
 
-function JobsTable({ jobs, loading, onOpen, onDelete }: JobsTableProps) {
+function JobsTable({ jobs, loading, units, onOpen, onDelete }: JobsTableProps) {
   const rows = useMemo(() => jobs, [jobs]);
 
   if (loading) {
@@ -370,7 +411,9 @@ function JobsTable({ jobs, loading, onOpen, onDelete }: JobsTableProps) {
               </td>
               <td className="px-4 py-4 align-middle text-graphite">
                 {job.calculatedArea > 0
-                  ? `${Math.round(job.calculatedArea * 10.7639).toLocaleString()} sq ft`
+                  ? units === "imperial"
+                    ? `${Math.round(job.calculatedArea * SQFT_PER_SQM).toLocaleString()} sq ft`
+                    : `${Math.round(job.calculatedArea).toLocaleString()} sq m`
                   : "—"}
               </td>
               <td className="px-4 py-4 align-middle">
@@ -394,6 +437,59 @@ function JobsTable({ jobs, loading, onOpen, onDelete }: JobsTableProps) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function UnitsToggle({
+  value,
+  onChange,
+}: {
+  value: Units;
+  onChange: (next: Units) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Units"
+      className="inline-flex border border-line"
+    >
+      <ToggleButton
+        active={value === "metric"}
+        onClick={() => onChange("metric")}
+      >
+        Metric
+      </ToggleButton>
+      <ToggleButton
+        active={value === "imperial"}
+        onClick={() => onChange("imperial")}
+      >
+        Imperial
+      </ToggleButton>
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-2 text-[11px] uppercase tracking-[0.18em] transition-colors ${
+        active
+          ? "bg-charcoal text-paper"
+          : "bg-paper text-graphite hover:bg-mist"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

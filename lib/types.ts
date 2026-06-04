@@ -46,6 +46,36 @@ export interface PolygonRecord {
   path: LatLng[];
 }
 
+/**
+ * One detected roof plane from the Google Solar pipeline. `area` is canonical
+ * metric (square meters), mirroring `calculatedArea`, so the display layer
+ * applies the exact same unit conversion to a segment as to the whole-roof
+ * total. `pitch` / `azimuth` are in degrees and optional — older scans (and
+ * future schema tweaks) may omit them, so always render defensively.
+ */
+export interface RoofSegment {
+  area: number;
+  pitch?: number;
+  azimuth?: number;
+}
+
+/**
+ * Backend-computed roof breakdown returned by the n8n Solar scan. Optional:
+ * only Roof jobs populate it, and legacy docs omit it entirely — always read
+ * via optional chaining / `normalizeRoofStats`. Its presence is the signal
+ * that the Solar measurement is authoritative and must not be overwritten by
+ * the on-map bounding-box polygon.
+ *
+ * Additional Solar fields (building bounding box, annual flux, yearly energy,
+ * shading / sunshine quantiles) are expected to land here later; they're read
+ * defensively so they render automatically once n8n starts writing them.
+ */
+export interface RoofStats {
+  segments: RoofSegment[];
+  /** Maximum solar panels the roof can host (Google Solar `maxArrayPanelsCount`). */
+  maxPanels?: number;
+}
+
 export interface JobDoc {
   jobId: string;
   userId: string;
@@ -71,6 +101,11 @@ export interface JobDoc {
   calculatedArea: number;
   /** Sum of every polygon's closed-loop perimeter in meters. */
   calculatedPerimeter: number;
+  /**
+   * Per-plane roof breakdown from the AI scan. `undefined` for non-roof jobs
+   * and any doc written before this field existed.
+   */
+  roofStats?: RoofStats;
   createdAt: Timestamp | null;
 }
 
@@ -110,6 +145,37 @@ export function normalizePolygonCoords(raw: unknown): LatLng[][] {
  */
 export function serializePolygonCoords(paths: LatLng[][]): PolygonRecord[] {
   return paths.map((path) => ({ path }));
+}
+
+/**
+ * Read whatever Firestore returned under `roofStats` and produce a clean
+ * `RoofStats` (or `undefined` when absent/malformed). Defensive: drops any
+ * segment without a numeric `area` so the display layer never has to guard.
+ * Read-only — never mutates the source value.
+ */
+export function normalizeRoofStats(raw: unknown): RoofStats | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as Record<string, unknown>;
+
+  const rawSegments = Array.isArray(obj.segments) ? obj.segments : [];
+  const segments: RoofSegment[] = [];
+  for (const entry of rawSegments) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.area !== "number") continue;
+    const seg: RoofSegment = { area: e.area };
+    if (typeof e.pitch === "number") seg.pitch = e.pitch;
+    if (typeof e.azimuth === "number") seg.azimuth = e.azimuth;
+    segments.push(seg);
+  }
+
+  const maxPanels =
+    typeof obj.maxPanels === "number" ? obj.maxPanels : undefined;
+
+  // Nothing usable → treat as absent so callers can rely on a single
+  // "is this a completed Solar scan?" check.
+  if (segments.length === 0 && maxPanels === undefined) return undefined;
+  return maxPanels === undefined ? { segments } : { segments, maxPanels };
 }
 
 function isLatLng(value: unknown): value is LatLng {
