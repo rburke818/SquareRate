@@ -6,7 +6,6 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   where,
@@ -41,6 +40,15 @@ const SQFT_PER_SQM = 10.7639104;
  */
 type SurfaceSelection = SurfaceType | "";
 
+/**
+ * Sort key for the jobs feed. A freshly created job's `serverTimestamp()` reads
+ * back as `null` on the first local snapshot, so treat null as the largest
+ * value to keep brand-new jobs pinned to the top until the server stamp lands.
+ */
+function createdAtMillis(job: JobDoc): number {
+  return job.createdAt ? job.createdAt.toMillis() : Number.MAX_SAFE_INTEGER;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
@@ -64,11 +72,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, "jobs"),
-      where("userId", "==", user.uid),
-      orderBy("createdAt", "desc"),
-    );
+    // Re-arm the loading state whenever the authed user changes so the table
+    // shows "Loading jobs…" rather than a stale/empty feed during refetch.
+    setJobsLoading(true);
+    // Equality-only query: this relies solely on the auto-created single-field
+    // index for `userId`, so it can never fail on a missing composite index
+    // (which is what silently emptied the feed). Ordering happens in memory.
+    const q = query(collection(db, "jobs"), where("userId", "==", user.uid));
     const unsub = onSnapshot(
       q,
       (snap: QuerySnapshot) => {
@@ -91,10 +101,16 @@ export default function DashboardPage() {
             createdAt: data.createdAt ?? null,
           };
         });
+        next.sort((a, b) => createdAtMillis(b) - createdAtMillis(a));
         setJobs(next);
         setJobsLoading(false);
       },
-      () => setJobsLoading(false),
+      (error) => {
+        // Surface the failure instead of silently rendering an empty feed — a
+        // swallowed error here is exactly why saved jobs appeared to vanish.
+        console.error("Jobs feed subscription failed:", error);
+        setJobsLoading(false);
+      },
     );
     return () => unsub();
   }, [user]);
