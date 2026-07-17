@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------
+   SquareRate — "Nordic Minimalist" design tokens.
+   Charcoal, stark white, muted grey. High contrast, crisp borders.
+---------------------------------------------------------------------- */
+:root {
+  --color-paper: #ffffff;
+  --color-bone: #fafafa;
+  --color-mist: #f3f3f2;
+  --color-line: #e5e5e5;
+  --color-muted: #8a8a88;
+  --color-graphite: #4a4a48;
+  --color-charcoal: #131313;
+}
+
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-bone: var(--color-bone);
+  --color-mist: var(--color-mist);
+  --color-line: var(--color-line);
+  --color-muted: var(--color-muted);
+  --color-graphite: var(--color-graphite);
+  --color-charcoal: var(--color-charcoal);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-charcoal);
+}
+
+body {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Crisp form controls. We override Tailwind/browser defaults so all inputs
+   share the same hairline border / focus treatment across the app. */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+}
+
+::selection {
+  background: var(--color-charcoal);
+  color: var(--color-paper);
+}

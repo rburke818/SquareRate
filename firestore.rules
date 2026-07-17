@@ -1,0 +1,70 @@
+rules_version = '2';
+
+// SquareRate strict per-user security rules.
+// A user can only read, create, update, or delete documents whose `userId`
+// field matches their authenticated UID. The `users/{uid}` profile document
+// is keyed by the UID itself.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------
+    // Reusable helpers
+    // -------------------------------------------------------------------
+
+    // True when the caller is authenticated AND is the owner of the
+    // document already on disk (i.e. `resource.data.userId` exists).
+    function isExistingOwner() {
+      return request.auth != null
+             && resource != null
+             && resource.data.userId == request.auth.uid;
+    }
+
+    // True when the incoming write stamps the caller's UID on the doc.
+    function writesAsOwner() {
+      return request.auth != null
+             && request.resource.data.userId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------
+    // User profile documents. Doc ID must equal the authenticated user's UID.
+    // -------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.uid == userId;
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // -------------------------------------------------------------------
+    // Job documents. Owner is identified by the `userId` field on the doc.
+    // Each verb is spelled out explicitly so the intent (and especially the
+    // delete path used by the Dashboard trash button) is unambiguous.
+    // -------------------------------------------------------------------
+    match /jobs/{jobId} {
+      // Owners may read their own job documents.
+      allow read: if isExistingOwner();
+
+      // Owners may create new jobs, but the new doc must already carry
+      // their UID — otherwise an owner could plant a job under someone
+      // else's account.
+      allow create: if writesAsOwner();
+
+      // Owners may update their own jobs. The UID cannot be re-assigned to
+      // someone else as part of the same update.
+      allow update: if isExistingOwner() && writesAsOwner();
+
+      // Owners may delete their own jobs. This is the rule the Dashboard
+      // trash button needs: `resource.data.userId == request.auth.uid`.
+      allow delete: if isExistingOwner();
+    }
+
+    // Deny by default. Every other path is locked down.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
