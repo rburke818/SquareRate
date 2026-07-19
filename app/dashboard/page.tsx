@@ -401,41 +401,28 @@ function JobsTable({ jobs, loading, units, onOpen, onDelete }: JobsTableProps) {
   }
 
   return (
-    <div className="border border-line">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead>
-          <tr className="border-b border-line bg-bone text-[11px] uppercase tracking-[0.18em] text-muted">
-            <th className="px-4 py-3 font-medium">Address</th>
-            <th className="px-4 py-3 font-medium">Type</th>
-            <th className="px-4 py-3 font-medium">Area</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3 text-right font-medium" aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((job) => (
-            <tr
-              key={job.jobId}
+    <>
+      {/* Mobile: stacked cards. Avoids the horizontal scroll a wide table forces
+          on small screens, and lets long addresses wrap instead of overflowing. */}
+      <ul className="flex flex-col gap-3 sm:hidden">
+        {rows.map((job) => (
+          <li key={job.jobId}>
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => onOpen(job.jobId)}
-              className="cursor-pointer border-b border-line last:border-b-0 transition-colors hover:bg-mist"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen(job.jobId);
+                }
+              }}
+              className="cursor-pointer border border-line bg-paper p-4 transition-colors hover:bg-mist"
             >
-              <td className="px-4 py-4 align-middle text-charcoal">
-                {job.address || <span className="text-muted">—</span>}
-              </td>
-              <td className="px-4 py-4 align-middle text-graphite">
-                {job.surfaceType || <span className="text-muted">—</span>}
-              </td>
-              <td className="px-4 py-4 align-middle text-graphite">
-                {job.calculatedArea > 0
-                  ? units === "imperial"
-                    ? `${Math.round(job.calculatedArea * SQFT_PER_SQM).toLocaleString()} sq ft`
-                    : `${Math.round(job.calculatedArea).toLocaleString()} sq m`
-                  : "—"}
-              </td>
-              <td className="px-4 py-4 align-middle">
-                <StatusPill status={job.status} />
-              </td>
-              <td className="px-4 py-4 text-right align-middle">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 flex-1 break-words text-sm font-medium text-charcoal">
+                  {job.address || <span className="text-muted">—</span>}
+                </p>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -443,16 +430,81 @@ function JobsTable({ jobs, loading, units, onOpen, onDelete }: JobsTableProps) {
                     onDelete(job.jobId);
                   }}
                   aria-label="Delete job"
-                  className="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1.5 text-charcoal transition-colors hover:border-charcoal hover:bg-charcoal hover:text-paper"
+                  className="inline-flex shrink-0 items-center justify-center border border-line bg-paper px-2.5 py-1.5 text-charcoal transition-colors hover:border-charcoal hover:bg-charcoal hover:text-paper"
                 >
                   <TrashIcon />
                 </button>
-              </td>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-graphite">
+                <span>{job.surfaceType || "—"}</span>
+                <span>
+                  {job.calculatedArea > 0
+                    ? units === "imperial"
+                      ? `${Math.round(job.calculatedArea * SQFT_PER_SQM).toLocaleString()} sq ft`
+                      : `${Math.round(job.calculatedArea).toLocaleString()} sq m`
+                    : "—"}
+                </span>
+                <StatusPill status={job.status} />
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {/* Desktop / tablet: the full table. */}
+      <div className="hidden border border-line sm:block">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-line bg-bone text-[11px] uppercase tracking-[0.18em] text-muted">
+              <th className="px-4 py-3 font-medium">Address</th>
+              <th className="px-4 py-3 font-medium">Type</th>
+              <th className="px-4 py-3 font-medium">Area</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 text-right font-medium" aria-label="Actions" />
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((job) => (
+              <tr
+                key={job.jobId}
+                onClick={() => onOpen(job.jobId)}
+                className="cursor-pointer border-b border-line last:border-b-0 transition-colors hover:bg-mist"
+              >
+                <td className="px-4 py-4 align-middle text-charcoal">
+                  {job.address || <span className="text-muted">—</span>}
+                </td>
+                <td className="px-4 py-4 align-middle text-graphite">
+                  {job.surfaceType || <span className="text-muted">—</span>}
+                </td>
+                <td className="px-4 py-4 align-middle text-graphite">
+                  {job.calculatedArea > 0
+                    ? units === "imperial"
+                      ? `${Math.round(job.calculatedArea * SQFT_PER_SQM).toLocaleString()} sq ft`
+                      : `${Math.round(job.calculatedArea).toLocaleString()} sq m`
+                    : "—"}
+                </td>
+                <td className="px-4 py-4 align-middle">
+                  <StatusPill status={job.status} />
+                </td>
+                <td className="px-4 py-4 text-right align-middle">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(job.jobId);
+                    }}
+                    aria-label="Delete job"
+                    className="inline-flex items-center justify-center border border-line bg-paper px-2.5 py-1.5 text-charcoal transition-colors hover:border-charcoal hover:bg-charcoal hover:text-paper"
+                  >
+                    <TrashIcon />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

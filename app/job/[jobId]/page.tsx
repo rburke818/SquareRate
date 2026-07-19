@@ -85,11 +85,13 @@ export default function JobWorkspacePage() {
   const [aiTriggering, setAiTriggering] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Scan-wait UX (non-roof only). The Replicate-hosted SAM model can cold-start
-  // for 2–3 minutes, so we reassure the user the scan is alive: a dismissible
-  // heads-up note + a live elapsed timer + staged status copy. Roof scans hit
-  // Google Solar and return quickly, so they keep the plain "Scanning…" state.
-  // `scanElapsedMs` is in-session only — no Firestore write.
+  // Scan-wait UX (non-roof only). The Modal-hosted SAM 3.1 model is fast when
+  // warm (a few seconds) but a cold start (first scan, or one after ~5 min of
+  // inactivity) spins up a GPU + loads weights and takes up to a minute. We
+  // reassure the user the scan is alive: a dismissible heads-up note + a live
+  // elapsed timer + staged status copy. Roof scans hit Google Solar and return
+  // quickly, so they keep the plain "Scanning…" state. `scanElapsedMs` is
+  // in-session only — no Firestore write.
   const [coldNoteDismissed, setColdNoteDismissed] = useState(false);
   // Live elapsed time for the in-flight scan, updated once a second from the
   // interval callback. Reset to 0 in `handleRunAiScan` when a scan begins; only
@@ -101,6 +103,8 @@ export default function JobWorkspacePage() {
    *  `processing → review` transition so we can re-seed the canvas with
    *  the AI-generated boundary mask. */
   const prevStatusRef = useRef<JobStatus | null>(null);
+  /** Guards the one-time auto-arm of draw mode for a brand-new empty job. */
+  const autoArmedRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/auth");
@@ -243,6 +247,21 @@ export default function JobWorkspacePage() {
     prevStatusRef.current = job.status;
   }, [job]);
 
+  /**
+   * Auto-arm drawing once for a brand-new empty job so the user can start
+   * dropping vertices immediately without hunting for the "Add polygon"
+   * button — the low-friction default we want (especially on mobile). Fires
+   * only for a fresh `pending` job with no polygons; the guard ref makes it a
+   * one-shot so it never fights the user after they disarm.
+   */
+  useEffect(() => {
+    if (autoArmedRef.current || !job) return;
+    if (job.status === "pending" && job.polygonCoords.length === 0) {
+      autoArmedRef.current = true;
+      setDrawArmed(true);
+    }
+  }, [job]);
+
   const handleGeometryChange = useCallback(
     (next: PolygonGeometry[]) => {
       setGeometry(next);
@@ -376,6 +395,22 @@ export default function JobWorkspacePage() {
         err instanceof Error ? err.message : "Could not finalize the job.",
       );
     }
+  }
+
+  /**
+   * Finalize using the user's hand-drawn polygon WITHOUT running the AI scan.
+   * For simple surfaces a manual box is faster than waiting on SAM and spends
+   * no scan compute/credit. Non-roof only (roofs should use the fast, accurate
+   * Google Solar scan). Reuses `handleFinalize`, which flushes the pending
+   * autosave — so the drawn area/perimeter ship — before flipping to complete.
+   */
+  function handleManualFinalize() {
+    if (!job || !aiScanReady) return;
+    const confirmed = window.confirm(
+      "Finalize this measurement using your drawn polygon, without running an AI scan?",
+    );
+    if (!confirmed) return;
+    void handleFinalize();
   }
 
   /** Download this job as a flat CSV (the same shape the dashboard bulk export
@@ -564,7 +599,7 @@ export default function JobWorkspacePage() {
           positioning ancestor for MapCanvas's `absolute inset-0` fill. */}
       <section className="flex flex-1 flex-col bg-bone">
         <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-6 min-h-0">
-          <div className="relative flex-1 overflow-hidden border border-line bg-[#d9d9d7] min-h-[520px]">
+          <div className="relative flex-1 overflow-hidden border border-line bg-[#d9d9d7] min-h-[360px] sm:min-h-[520px]">
             <MapCanvas
               ref={mapRef}
               center={center}
@@ -574,6 +609,25 @@ export default function JobWorkspacePage() {
               onChange={handleGeometryChange}
               locked={canvasLocked}
             />
+            {/* Mobile-only floating draw toggle. On phones the control dock can
+                sit below the fold, so mirror the "Add polygon" action directly
+                on the map where it's always reachable. Bottom-left to avoid the
+                Google zoom control. Hidden at sm+ where the dock is visible. */}
+            {!isProcessing ? (
+              <button
+                type="button"
+                onClick={handleToggleAddPolygon}
+                aria-pressed={drawArmed}
+                className={`absolute bottom-3 left-3 z-10 inline-flex items-center gap-2 border px-3 py-2.5 text-[11px] uppercase tracking-[0.22em] shadow-md transition-colors sm:hidden ${
+                  drawArmed
+                    ? "border-charcoal bg-charcoal text-paper"
+                    : "border-line bg-paper text-charcoal"
+                }`}
+              >
+                <PlusIcon />
+                {drawArmed ? "Drawing… tap to cancel" : "Add polygon"}
+              </button>
+            ) : null}
           </div>
           <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-muted">
             <span>
@@ -627,7 +681,8 @@ export default function JobWorkspacePage() {
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3 text-[11px] text-charcoal">
             <span className="uppercase tracking-[0.18em]">Heads up</span>
             <span className="flex-1 normal-case tracking-normal text-graphite">
-              The first scan can take 2–3 minutes while the AI model warms up.
+              The first scan (or one after a few minutes idle) can take up to a
+              minute while the AI model warms up — repeat scans are much faster.
               You can leave this page — we’ll save the result when it lands.
             </span>
             <button
@@ -749,15 +804,32 @@ export default function JobWorkspacePage() {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={handleRunAiScan}
-                disabled={!aiScanReady || aiTriggering}
-                title={aiScanLockReason ?? undefined}
-                className="bg-charcoal px-6 py-3 text-[11px] uppercase tracking-[0.22em] text-paper transition-colors hover:bg-graphite disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {aiTriggering ? "Starting…" : "Run AI Scan"}
-              </button>
+              <>
+                {!isRoof ? (
+                  <button
+                    type="button"
+                    onClick={handleManualFinalize}
+                    disabled={!aiScanReady || aiTriggering}
+                    title={
+                      aiScanReady
+                        ? "Skip the AI scan and finalize using your drawn polygon"
+                        : (aiScanLockReason ?? undefined)
+                    }
+                    className="inline-flex items-center gap-2 border border-line bg-paper px-3 py-2.5 text-[11px] uppercase tracking-[0.22em] text-charcoal transition-colors hover:border-charcoal hover:bg-charcoal hover:text-paper disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-paper disabled:hover:text-charcoal"
+                  >
+                    Finalize without scan
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleRunAiScan}
+                  disabled={!aiScanReady || aiTriggering}
+                  title={aiScanLockReason ?? undefined}
+                  className="bg-charcoal px-6 py-3 text-[11px] uppercase tracking-[0.22em] text-paper transition-colors hover:bg-graphite disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {aiTriggering ? "Starting…" : "Run AI Scan"}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -809,9 +881,9 @@ function instructionFor(
  */
 function scanProgressMessage(elapsedMs: number): string {
   const seconds = elapsedMs / 1000;
-  if (seconds < 20) return "Dispatching to the segmentation model…";
-  if (seconds < 60) return "Warming up the model — cold starts take a moment…";
-  if (seconds < 120) return "Segmenting your surface…";
+  if (seconds < 10) return "Dispatching to the segmentation model…";
+  if (seconds < 25) return "Warming up the model — cold starts take a moment…";
+  if (seconds < 45) return "Segmenting your surface…";
   return "Almost there — refining the mask…";
 }
 

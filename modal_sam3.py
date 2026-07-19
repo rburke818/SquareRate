@@ -52,6 +52,12 @@ CKPT_FILENAME = "sam3.1_multiplex.pt"
 # containers never pay a download / cold-start penalty.
 MODEL_CACHE = "/models/sam3.1"
 DEFAULT_FRAME = 640
+# Systematic overestimate: grow the final mask outward by this many pixels
+# (elliptical structuring element) before encoding. For surface-area estimation
+# it's safer to slightly over- than under-cover the target. Tunable; set to 0 to
+# disable. Note the real-world margin scales with the crop's meters-per-pixel,
+# so a fixed pixel radius covers more ground on wider (lower-zoom) crops.
+DILATE_PX = 6
 
 # ---------------------------------------------------------------------------
 # Build-time weight fetch
@@ -309,7 +315,9 @@ class Sam3Predictor:
                     ):
                         union |= m
 
-        # Encode the merged layer as a binary black/white PNG (white = surface).
+        # Grow the merged layer outward for a deliberate slight overestimate,
+        # then encode as a binary black/white PNG (white = surface).
+        union = _dilate_mask(union, DILATE_PX)
         png_b64 = _encode_mask_png(union)
 
         return {
@@ -322,6 +330,28 @@ class Sam3Predictor:
 # ---------------------------------------------------------------------------
 # Module-level mask helpers (importable / testable, no GPU state)
 # ---------------------------------------------------------------------------
+def _dilate_mask(mask_bool, radius_px: int):
+    """Expand a boolean mask outward by `radius_px` using an elliptical kernel.
+
+    Rounder than a box kernel (less corner blockiness). Returns the input
+    unchanged when radius <= 0 or the mask is empty.
+    """
+    import numpy as np
+
+    if radius_px <= 0:
+        return mask_bool
+    arr = np.asarray(mask_bool)
+    if not arr.any():
+        return arr
+
+    import cv2
+
+    k = 2 * int(radius_px) + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    dilated = cv2.dilate(arr.astype("uint8"), kernel, iterations=1)
+    return dilated.astype(bool)
+
+
 def _read_masks_field(result):
     """Pull the `masks` payload out of a SAM 3 output dict / inference state.
 
