@@ -1,12 +1,24 @@
 import type { Timestamp } from "firebase/firestore";
 
+/** @deprecated Superseded by `PlanId`. Kept for legacy docs. */
 export type Tier = "trial" | "pro" | "enterprise";
+
+/** Billing plans. `beta` is the implicit default for existing/grandfathered
+ *  users (any doc without a `plan` field is treated as `beta`). */
+export type PlanId = "beta" | "solo" | "team" | "commercial" | "roofer";
 
 export interface UserDoc {
   uid: string;
   email: string;
+  /** @deprecated legacy field; new logic reads `plan`. */
   tier: Tier;
+  /** Current billing plan. Absent on legacy/beta docs → treated as `beta`. */
+  plan?: PlanId;
+  /** Scans consumed in the current period (see `usage_period`). */
   api_queries_this_month: number;
+  /** The "YYYY-MM" period the counter applies to. When the month rolls over,
+   *  the server resets the counter and stamps the new period. */
+  usage_period?: string;
 }
 
 export type SurfaceType = "Roof" | "Pavement" | "Decking" | "Pool" | "Lawn";

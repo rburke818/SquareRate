@@ -4,6 +4,7 @@ import { FirebaseError } from "firebase/app";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { Footer } from "@/components/Footer";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/lib/auth-context";
 
@@ -78,7 +79,8 @@ export default function AuthPage() {
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center px-6 py-16">
+    <>
+      <main className="flex flex-1 items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm">
         <div className="mb-12 flex justify-center">
           <Logo href="/auth" />
@@ -187,7 +189,9 @@ export default function AuthPage() {
           Continue with Google
         </button>
       </div>
-    </main>
+      </main>
+      <Footer />
+    </>
   );
 }
 

@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { exportJobToCSV } from "@/lib/csvExport";
 import { db } from "@/lib/firebase";
+import { canRunScan, usageSummary } from "@/lib/plans";
 import {
   SURFACE_TYPES,
   normalizePolygonCoords,
@@ -53,7 +54,7 @@ export default function JobWorkspacePage() {
   const router = useRouter();
   const params = useParams<{ jobId: string }>();
   const jobId = params?.jobId;
-  const { user, loading: authLoading } = useAuth();
+  const { user, userDoc, loading: authLoading } = useAuth();
 
   const [job, setJob] = useState<JobDoc | null>(null);
   const [jobLoading, setJobLoading] = useState(true);
@@ -304,6 +305,12 @@ export default function JobWorkspacePage() {
    */
   async function handleRunAiScan() {
     if (!job || !aiScanReady) return;
+    // Plan/quota gate (client-side UX; n8n enforces authoritatively).
+    const gate = canRunScan(userDoc, job.surfaceType);
+    if (!gate.allowed) {
+      setAiError(gate.reason ?? "This scan isn't available on your plan.");
+      return;
+    }
     if (!N8N_WEBHOOK_URL) {
       setAiError(
         "The AI webhook is not configured. Set NEXT_PUBLIC_N8N_WEBHOOK_URL in .env.local and restart the dev server.",
@@ -537,6 +544,12 @@ export default function JobWorkspacePage() {
         ? "Draw a polygon to unlock the AI scan."
         : null;
 
+  // Billing gate — display/UX only; n8n enforces the real limit server-side.
+  // Blocks the scan when the user is over their monthly quota or the surface
+  // isn't covered by their plan (e.g. the roof-only Roofer plan).
+  const usage = usageSummary(userDoc);
+  const scanGate = canRunScan(userDoc, job?.surfaceType);
+
   if (authLoading || jobLoading) {
     return (
       <main className="flex flex-1 items-center justify-center">
@@ -734,6 +747,12 @@ export default function JobWorkspacePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {userDoc ? (
+              <span className="w-full text-[10px] uppercase tracking-[0.18em] text-muted lg:mr-2 lg:w-auto lg:self-center">
+                {usage.remaining} / {usage.quota} scans left
+                {usage.plan.roofOnly ? " · roof-only" : ""}
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={handleToggleAddPolygon}
@@ -823,8 +842,8 @@ export default function JobWorkspacePage() {
                 <button
                   type="button"
                   onClick={handleRunAiScan}
-                  disabled={!aiScanReady || aiTriggering}
-                  title={aiScanLockReason ?? undefined}
+                  disabled={!aiScanReady || aiTriggering || !scanGate.allowed}
+                  title={scanGate.reason ?? aiScanLockReason ?? undefined}
                   className="bg-charcoal px-6 py-3 text-[11px] uppercase tracking-[0.22em] text-paper transition-colors hover:bg-graphite disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {aiTriggering ? "Starting…" : "Run AI Scan"}

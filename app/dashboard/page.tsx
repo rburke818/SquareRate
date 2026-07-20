@@ -18,9 +18,11 @@ import {
   AddressAutocomplete,
   type AddressSelection,
 } from "@/components/AddressAutocomplete";
+import { Footer } from "@/components/Footer";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/lib/auth-context";
 import { exportJobsToCSV, type Units } from "@/lib/csvExport";
+import { usageSummary } from "@/lib/plans";
 import { db } from "@/lib/firebase";
 import {
   SURFACE_TYPES,
@@ -51,7 +53,8 @@ function createdAtMillis(job: JobDoc): number {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, loading, logout } = useAuth();
+  const { user, userDoc, loading, logout } = useAuth();
+  const usage = usageSummary(userDoc);
 
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
@@ -228,12 +231,16 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col">
+    <>
+      <main className="flex flex-1 flex-col">
       <header className="border-b border-line">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
           <Logo onReset={resetIntake} />
           <div className="flex items-center gap-4">
             <span className="hidden text-xs text-muted sm:inline">
+              {usage.plan.label} · {usage.used}/{usage.quota} scans
+            </span>
+            <span className="hidden text-xs text-muted md:inline">
               {user.email}
             </span>
             <button
@@ -366,7 +373,9 @@ export default function DashboardPage() {
           />
         </div>
       </section>
-    </main>
+      </main>
+      <Footer />
+    </>
   );
 }
 
