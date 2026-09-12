@@ -15,6 +15,7 @@ import {
   type MapCanvasHandle,
   type PolygonGeometry,
 } from "@/components/MapCanvas";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import { useAuth } from "@/lib/auth-context";
 import { exportJobToCSV } from "@/lib/csvExport";
 import { db } from "@/lib/firebase";
@@ -85,6 +86,12 @@ export default function JobWorkspacePage() {
   // failures (network down, n8n returns non-2xx) in a dismissable banner.
   const [aiTriggering, setAiTriggering] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Upgrade overlay. Opened when the user tries to scan with no allowance
+  // left, rather than on mount — being ambushed by a paywall the moment a job
+  // loads reads as a shakedown, whereas hitting it on the blocked action is
+  // the natural place to explain why nothing happened.
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   // Scan-wait UX (non-roof only). The Modal-hosted SAM 3.1 model is fast when
   // warm (a few seconds) but a cold start (first scan, or one after ~5 min of
@@ -305,10 +312,12 @@ export default function JobWorkspacePage() {
    */
   async function handleRunAiScan() {
     if (!job || !aiScanReady) return;
-    // Plan/quota gate (client-side UX; n8n enforces authoritatively).
-    const gate = canRunScan(userDoc, job.surfaceType);
+    // Plan/quota gate (client-side UX; n8n enforces authoritatively). Out of
+    // scans is a billing problem, not an error, so it gets the upgrade overlay
+    // instead of the red banner used for pipeline failures.
+    const gate = canRunScan(userDoc);
     if (!gate.allowed) {
-      setAiError(gate.reason ?? "This scan isn't available on your plan.");
+      setUpgradeOpen(true);
       return;
     }
     if (!N8N_WEBHOOK_URL) {
@@ -545,10 +554,10 @@ export default function JobWorkspacePage() {
         : null;
 
   // Billing gate — display/UX only; n8n enforces the real limit server-side.
-  // Blocks the scan when the user is over their monthly quota or the surface
-  // isn't covered by their plan (e.g. the roof-only Roofer plan).
+  // Blocks the scan once the user is out of allowance for the period (or, on
+  // the free trial, out of lifetime scans).
   const usage = usageSummary(userDoc);
-  const scanGate = canRunScan(userDoc, job?.surfaceType);
+  const scanGate = canRunScan(userDoc);
 
   if (authLoading || jobLoading) {
     return (
@@ -750,7 +759,7 @@ export default function JobWorkspacePage() {
             {userDoc ? (
               <span className="w-full text-[10px] uppercase tracking-[0.18em] text-muted lg:mr-2 lg:w-auto lg:self-center">
                 {usage.remaining} / {usage.quota} scans left
-                {usage.plan.roofOnly ? " · roof-only" : ""}
+                {usage.plan.lifetimeQuota ? " · free trial" : ""}
               </span>
             ) : null}
             <button
@@ -866,6 +875,12 @@ export default function JobWorkspacePage() {
           </div>
         ) : null}
       </footer>
+
+      <UpgradeModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        userDoc={userDoc}
+      />
     </main>
   );
 }

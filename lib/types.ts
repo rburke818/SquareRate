@@ -3,9 +3,18 @@ import type { Timestamp } from "firebase/firestore";
 /** @deprecated Superseded by `PlanId`. Kept for legacy docs. */
 export type Tier = "trial" | "pro" | "enterprise";
 
-/** Billing plans. `beta` is the implicit default for existing/grandfathered
- *  users (any doc without a `plan` field is treated as `beta`). */
-export type PlanId = "beta" | "solo" | "team" | "commercial" | "roofer";
+/**
+ * Billing plans.
+ *
+ *  - `beta`   — grandfathered. The implicit default for any user doc written
+ *               before paid plans existed (no `plan` field → `beta`). These
+ *               accounts keep their original 100 free scans/month; do NOT
+ *               repoint the default at `trial` or every legacy user silently
+ *               drops from 100 scans to 5.
+ *  - `trial`  — every NEW signup. 5 scans total, for the life of the account.
+ *  - `solo`   — Solo Crew, `pro` — Pro Crew. Sold via LemonSqueezy.
+ */
+export type PlanId = "beta" | "trial" | "solo" | "pro";
 
 export interface UserDoc {
   uid: string;
@@ -19,6 +28,18 @@ export interface UserDoc {
   /** The "YYYY-MM" period the counter applies to. When the month rolls over,
    *  the server resets the counter and stamps the new period. */
   usage_period?: string;
+  /**
+   * Lifetime scan count for the free trial. Deliberately separate from
+   * `api_queries_this_month`: that counter is zeroed every month, which would
+   * hand a trial user 5 fresh scans on the 1st, forever. This one is only ever
+   * incremented. The n8n metering node MUST increment this (not the monthly
+   * counter) while `plan === "trial"`.
+   */
+  trial_scans_used?: number;
+  /** LemonSqueezy subscription id, written by the billing webhook. */
+  ls_subscription_id?: string;
+  /** LemonSqueezy customer id, for linking to their self-serve portal. */
+  ls_customer_id?: string;
 }
 
 export type SurfaceType = "Roof" | "Pavement" | "Decking" | "Pool" | "Lawn";

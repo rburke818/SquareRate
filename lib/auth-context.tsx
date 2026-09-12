@@ -26,6 +26,7 @@ import {
 } from "react";
 
 import { auth, db, googleProvider } from "./firebase";
+import { currentUsagePeriod, SIGNUP_PLAN_ID } from "./plans";
 import type { UserDoc } from "./types";
 
 interface AuthContextValue {
@@ -46,11 +47,17 @@ async function ensureUserDoc(user: User): Promise<void> {
   const snap = await getDoc(ref);
   if (snap.exists()) return;
 
+  // New accounts are written with an EXPLICIT plan. Existing docs predate the
+  // `plan` field and resolve to `beta` (100 free scans/month) — writing "trial"
+  // here is what keeps those grandfathered accounts off the 5-scan allowance.
   const profile: UserDoc & { createdAt: ReturnType<typeof serverTimestamp> } = {
     uid: user.uid,
     email: user.email ?? "",
     tier: "trial",
+    plan: SIGNUP_PLAN_ID,
     api_queries_this_month: 0,
+    usage_period: currentUsagePeriod(),
+    trial_scans_used: 0,
     createdAt: serverTimestamp(),
   };
   await setDoc(ref, profile);

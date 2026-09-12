@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { SupportWidget } from "@/components/SupportWidget";
 import { AuthProvider } from "@/lib/auth-context";
+import { SupportProvider } from "@/lib/support-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -53,7 +55,14 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full bg-paper text-charcoal flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <SupportProvider>
+            {children}
+            {/* Mounted once so the floating bug toggle and the footer's
+                Contact link share a single panel instance. */}
+            <SupportWidget />
+          </SupportProvider>
+        </AuthProvider>
       </body>
     </html>
   );
