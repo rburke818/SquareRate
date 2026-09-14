@@ -40,7 +40,11 @@ export const LEMONSQUEEZY_STORE_URL = "https://squarerate.lemonsqueezy.com";
 export function checkoutUrlFor(
   plan: Plan,
   period: BillingPeriod,
-  user?: { uid: string; email?: string | null } | null,
+  user?: {
+    uid: string;
+    email?: string | null;
+    referred_by?: string | null;
+  } | null,
 ): string | null {
   const base = CHECKOUT_URLS[`${plan.id}:${period}`];
   if (!base) return null;
@@ -64,6 +68,11 @@ export function checkoutUrlFor(
     // Pre-fills the email field; the buyer can still change it, which is why
     // uid (not email) is what the webhook keys on.
     url.searchParams.set("checkout[email]", user.email);
+  }
+  if (user?.referred_by) {
+    // Carries the referrer into the `subscription_created` payload, so the
+    // billing workflow can record the commission without a second lookup.
+    url.searchParams.set("checkout[custom][ref]", user.referred_by);
   }
 
   return url.toString();

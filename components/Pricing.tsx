@@ -40,8 +40,13 @@ interface PricingProps {
    */
   currentPlanId?: PlanId | null;
   /** Identity stamped onto the checkout URL so the billing webhook can match
-   *  the purchase back to a Firestore user. Omit for logged-out visitors. */
-  user?: { uid: string; email?: string | null } | null;
+   *  the purchase back to a Firestore user, and the referral to a commission.
+   *  Omit for logged-out visitors. */
+  user?: {
+    uid: string;
+    email?: string | null;
+    referred_by?: string | null;
+  } | null;
   /**
    * Override the LemonSqueezy checkout URL per card. Defaults to the URLs
    * configured in `.env.local` via `lib/billing.ts`.

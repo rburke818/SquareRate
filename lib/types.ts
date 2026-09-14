@@ -40,6 +40,21 @@ export interface UserDoc {
   ls_subscription_id?: string;
   /** LemonSqueezy customer id, for linking to their self-serve portal. */
   ls_customer_id?: string;
+  /** LemonSqueezy subscription status: active, cancelled, past_due, expired… */
+  ls_status?: string;
+  /** ISO date the subscription next renews, or ends if already cancelled. */
+  ls_renews_at?: string;
+  /**
+   * Signed LemonSqueezy customer-portal URL, refreshed by the billing webhook.
+   * These expire, so the account page always offers an email fallback rather
+   * than assuming the stored link still works.
+   */
+  ls_customer_portal_url?: string;
+  /**
+   * Referral code captured from `?ref=` at signup. Commission is paid against
+   * this, so security rules make it immutable once the document exists.
+   */
+  referred_by?: string;
 }
 
 export type SurfaceType = "Roof" | "Pavement" | "Decking" | "Pool" | "Lawn";

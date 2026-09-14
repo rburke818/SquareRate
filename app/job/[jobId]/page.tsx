@@ -311,7 +311,7 @@ export default function JobWorkspacePage() {
    * picks it up, and the UI advances automatically.
    */
   async function handleRunAiScan() {
-    if (!job || !aiScanReady) return;
+    if (!job || !user || !aiScanReady) return;
     // Plan/quota gate (client-side UX; n8n enforces authoritatively). Out of
     // scans is a billing problem, not an error, so it gets the upgrade overlay
     // instead of the red banner used for pipeline failures.
@@ -349,10 +349,20 @@ export default function JobWorkspacePage() {
     setScanElapsedMs(0);
     setAiTriggering(true);
     try {
+      // Prove who is asking. The webhook URL ships in the client bundle, so
+      // without a token anyone can read it out of the JS and spend our Solar
+      // quota and GPU minutes at will. n8n verifies this against the Firebase
+      // Admin SDK and meters the scan against the token's uid — never against
+      // a uid supplied in the body, which the caller controls.
+      const idToken = await user.getIdToken();
+
       await updateDoc(doc(db, "jobs", job.jobId), { status: "processing" });
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           jobId: job.jobId,
           lat: job.lat,
@@ -361,6 +371,16 @@ export default function JobWorkspacePage() {
           boundaryMask,
         }),
       });
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          "Your session has expired. Sign out and back in, then try the scan again.",
+        );
+      }
+      if (response.status === 429) {
+        throw new Error(
+          "You're out of scans for this period. Upgrade your plan to keep measuring.",
+        );
+      }
       if (!response.ok) {
         throw new Error(
           `Webhook responded with ${response.status} ${response.statusText}`.trim(),

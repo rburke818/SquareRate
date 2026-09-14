@@ -52,7 +52,15 @@ export function PricingSection() {
       <main className="flex flex-1 flex-col py-20">
         <Pricing
           currentPlanId={userDoc?.plan ?? null}
-          user={user ? { uid: user.uid, email: user.email } : null}
+          user={
+            user
+              ? {
+                  uid: user.uid,
+                  email: user.email,
+                  referred_by: userDoc?.referred_by ?? null,
+                }
+              : null
+          }
         />
       </main>
     </>

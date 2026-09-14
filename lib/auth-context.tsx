@@ -27,6 +27,7 @@ import {
 
 import { auth, db, googleProvider } from "./firebase";
 import { currentUsagePeriod, SIGNUP_PLAN_ID } from "./plans";
+import { clearStoredReferralCode, storedReferralCode } from "./referrals";
 import type { UserDoc } from "./types";
 
 interface AuthContextValue {
@@ -50,6 +51,10 @@ async function ensureUserDoc(user: User): Promise<void> {
   // New accounts are written with an EXPLICIT plan. Existing docs predate the
   // `plan` field and resolve to `beta` (100 free scans/month) — writing "trial"
   // here is what keeps those grandfathered accounts off the 5-scan allowance.
+  //
+  // The security rules pin this shape: `plan` must be "trial" and both counters
+  // must start at zero, so a hand-crafted create can't mint a paid account.
+  const referredBy = storedReferralCode();
   const profile: UserDoc & { createdAt: ReturnType<typeof serverTimestamp> } = {
     uid: user.uid,
     email: user.email ?? "",
@@ -58,9 +63,15 @@ async function ensureUserDoc(user: User): Promise<void> {
     api_queries_this_month: 0,
     usage_period: currentUsagePeriod(),
     trial_scans_used: 0,
+    ...(referredBy ? { referred_by: referredBy } : {}),
     createdAt: serverTimestamp(),
   };
   await setDoc(ref, profile);
+
+  // Only once the write lands, so a failed signup doesn't burn the attribution.
+  // Clearing stops a second account made in the same browser being credited to
+  // the same referrer.
+  if (referredBy) clearStoredReferralCode();
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

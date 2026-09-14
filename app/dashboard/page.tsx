@@ -11,6 +11,7 @@ import {
   where,
   type QuerySnapshot,
 } from "firebase/firestore";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -237,12 +238,18 @@ export default function DashboardPage() {
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
           <Logo onReset={resetIntake} />
           <div className="flex items-center gap-4">
-            <span className="hidden text-xs text-muted sm:inline">
+            <Link
+              href="/account"
+              className="hidden text-xs text-muted transition-colors hover:text-charcoal sm:inline"
+            >
               {usage.plan.label} · {usage.used}/{usage.quota} scans
-            </span>
-            <span className="hidden text-xs text-muted md:inline">
+            </Link>
+            <Link
+              href="/account"
+              className="hidden text-xs text-muted transition-colors hover:text-charcoal md:inline"
+            >
               {user.email}
-            </span>
+            </Link>
             <button
               type="button"
               onClick={handleLogout}

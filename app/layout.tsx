@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { ReferralCapture } from "@/components/ReferralCapture";
 import { SupportWidget } from "@/components/SupportWidget";
 import { AuthProvider } from "@/lib/auth-context";
 import { SupportProvider } from "@/lib/support-context";
@@ -57,6 +58,7 @@ export default function RootLayout({
       <body className="min-h-full bg-paper text-charcoal flex flex-col">
         <AuthProvider>
           <SupportProvider>
+            <ReferralCapture />
             {children}
             {/* Mounted once so the floating bug toggle and the footer's
                 Contact link share a single panel instance. */}

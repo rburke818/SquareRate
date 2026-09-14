@@ -1,0 +1,25 @@
+# Line endings are decided here rather than by whatever each machine's Git
+# install happens to default to.
+#
+# The repository already stores every text file with LF, so pinning the working
+# copy to LF as well means no conversion runs in either direction and Windows,
+# macOS and CI all check out byte-identical files. Without this, a collaborator
+# on another platform can produce a diff where an entire file looks rewritten
+# purely because their checkout flipped every line ending.
+* text=auto eol=lf
+
+# Batch files are the real exception: the Windows command interpreter can
+# mis-parse them when they arrive with LF endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be normalized or line-diffed. SVG is deliberately
+# absent — it's XML, and diffing it is useful.
+*.ico   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
